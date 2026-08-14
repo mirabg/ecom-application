@@ -5,6 +5,7 @@ import com.app.ecom.dto.ProductResponse;
 import com.app.ecom.model.Product;
 import com.app.ecom.repository.ProductRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,7 +26,7 @@ public class ProductService {
     }
 
     public List<ProductResponse> fetchAllProducts() {
-        List<Product> products = productRepository.findAll();
+        List<Product> products = productRepository.findByActiveTrue();
         return products.stream().map(this::mapProductToProductResponse).toList();
     }
 
@@ -70,5 +71,14 @@ public class ProductService {
         productResponse.setId(product.getId());
         productResponse.setActive(product.getActive());
         return productResponse;
+    }
+
+    public boolean deleteProduct(Long id) {
+        return productRepository.findById(id)
+                .map(product -> {
+                    product.setActive(false);
+                    productRepository.save(product);
+                    return true;
+                }).orElse(false);
     }
 }

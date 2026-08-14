@@ -18,6 +18,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -55,10 +57,19 @@ class ProductControllerTest {
                         .content(validProductJson("Desk Lamp", "LED desk lamp", "29.99", 60, "Lighting", "https://cdn.example.com/lamp.png")))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(get("/api/products"))
+        MvcResult listResult = mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> productNames = JsonPath.read(listResult.getResponse().getContentAsString(), "$[*].name");
+        List<String> productCategories = JsonPath.read(listResult.getResponse().getContentAsString(), "$[*].category");
+
+        assertTrue(productNames.contains("Monitor"));
+        assertTrue(productNames.contains("Desk Lamp"));
+        assertTrue(productCategories.contains("Displays"));
+        assertTrue(productCategories.contains("Lighting"));
     }
 
     @Test
@@ -145,6 +156,53 @@ class ProductControllerTest {
         mockMvc.perform(put("/api/products/{id}", 999999L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validProductJson("Any", "Any", "1.00", 1, "Any", "https://cdn.example.com/any.png")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteProductReturnsNoContentAndMarksInactive() throws Exception {
+        MvcResult createResult = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Webcam", "1080p webcam", "89.99", 22, "Accessories", "https://cdn.example.com/webcam.png")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Number createdIdNumber = JsonPath.read(createResult.getResponse().getContentAsString(), "$.id");
+        Long createdId = createdIdNumber.longValue();
+
+        mockMvc.perform(delete("/api/products/{id}", createdId))
+                .andExpect(status().isNoContent());
+
+        Product deletedProduct = productRepository.findById(createdId)
+                .orElseThrow(() -> new IllegalStateException("Expected deleted product not found"));
+        assertEquals(false, deletedProduct.getActive());
+    }
+
+    @Test
+    void deleteProductHidesProductFromGetAllResults() throws Exception {
+        MvcResult createResult = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Headset", "Wireless headset", "129.99", 10, "Audio", "https://cdn.example.com/headset.png")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Number createdIdNumber = JsonPath.read(createResult.getResponse().getContentAsString(), "$.id");
+        Long createdId = createdIdNumber.longValue();
+
+        mockMvc.perform(delete("/api/products/{id}", createdId))
+                .andExpect(status().isNoContent());
+
+        MvcResult listResult = mockMvc.perform(get("/api/products"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        List<Number> remainingIds = JsonPath.read(listResult.getResponse().getContentAsString(), "$[*].id");
+        assertFalse(remainingIds.stream().anyMatch(id -> id.longValue() == createdId));
+    }
+
+    @Test
+    void deleteProductReturnsNotFoundWhenMissing() throws Exception {
+        mockMvc.perform(delete("/api/products/{id}", 999999L))
                 .andExpect(status().isNotFound());
     }
 
