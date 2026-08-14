@@ -206,6 +206,75 @@ class ProductControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void searchProductsReturnsCaseInsensitiveMatches() throws Exception {
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Wireless Mouse", "Bluetooth mouse", "49.99", 25, "Accessories", "https://cdn.example.com/mouse.png")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Gaming Mouse Pad", "Large mouse pad", "19.99", 40, "Accessories", "https://cdn.example.com/mouse-pad.png")))
+                .andExpect(status().isCreated());
+
+        MvcResult searchResult = mockMvc.perform(get("/api/products/search").param("keyword", "MOUSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> names = JsonPath.read(searchResult.getResponse().getContentAsString(), "$[*].name");
+        assertTrue(names.contains("Wireless Mouse"));
+        assertTrue(names.contains("Gaming Mouse Pad"));
+    }
+
+    @Test
+    void searchProductsReturnsEmptyWhenNoMatch() throws Exception {
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Desk Lamp", "LED lamp", "29.99", 40, "Lighting", "https://cdn.example.com/lamp.png")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/products/search").param("keyword", "nonexistent-keyword"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void searchProductsExcludesDeletedAndOutOfStock() throws Exception {
+        MvcResult activeCreateResult = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Monitor Pro", "4K monitor", "399.99", 8, "Displays", "https://cdn.example.com/monitor-pro.png")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        MvcResult deleteCreateResult = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Monitor Legacy", "Old monitor", "99.99", 6, "Displays", "https://cdn.example.com/monitor-legacy.png")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Monitor Out", "Out of stock monitor", "199.99", 0, "Displays", "https://cdn.example.com/monitor-out.png")))
+                .andExpect(status().isCreated());
+
+        Number deletedIdNumber = JsonPath.read(deleteCreateResult.getResponse().getContentAsString(), "$.id");
+        mockMvc.perform(delete("/api/products/{id}", deletedIdNumber.longValue()))
+                .andExpect(status().isNoContent());
+
+        Number activeIdNumber = JsonPath.read(activeCreateResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/products/search").param("keyword", "monitor"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(activeIdNumber.longValue()))
+                .andExpect(jsonPath("$[0].name").value("Monitor Pro"));
+    }
+
     private String validProductJson(String name, String description, String price, int stockQuantity, String category, String imageUrl) {
         return "{" +
                 "\"name\":\"" + name + "\"," +
