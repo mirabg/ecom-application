@@ -19,7 +19,11 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.hamcrest.Matchers.contains;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -107,6 +111,19 @@ class CartControllerTest {
     }
 
     @Test
+    void addToCartReturnsBadRequestWhenUserHeaderMalformed() throws Exception {
+        Product product = createProduct("USB Hub", "39.99", 8);
+
+        mockMvc.perform(post("/api/cart")
+                        .header("X-User-ID", "not-a-number")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cartItemJson(product.getId(), 1)))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0, cartItemRepository.count());
+    }
+
+    @Test
     void addToCartReturnsBadRequestWhenRequestedQuantityExceedsStock() throws Exception {
         User user = createUser("stock@example.com");
         Product product = createProduct("Webcam", "89.99", 1);
@@ -119,6 +136,106 @@ class CartControllerTest {
 
         CartItem cartItem = cartItemRepository.findByUserAndProduct(user, product);
         assertNull(cartItem);
+    }
+
+    @Test
+    void removeFromCartReturnsNoContentAndDeletesCartItem() throws Exception {
+        User user = createUser("delete-success@example.com");
+        Product product = createProduct("Speaker", "59.99", 5);
+
+        mockMvc.perform(post("/api/cart")
+                        .header("X-User-ID", user.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cartItemJson(product.getId(), 2)))
+                .andExpect(status().isCreated());
+
+        CartItem beforeDelete = cartItemRepository.findByUserAndProduct(user, product);
+        assertNotNull(beforeDelete);
+
+        mockMvc.perform(delete("/api/cart/items/{productId}", product.getId())
+                        .header("X-User-ID", user.getId().toString()))
+                .andExpect(status().isNoContent());
+
+        CartItem afterDelete = cartItemRepository.findByUserAndProduct(user, product);
+        assertNull(afterDelete);
+    }
+
+    @Test
+    void removeFromCartReturnsBadRequestWhenProductMissing() throws Exception {
+        User user = createUser("delete-missing-product@example.com");
+
+        mockMvc.perform(delete("/api/cart/items/{productId}", 999999L)
+                        .header("X-User-ID", user.getId().toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void removeFromCartReturnsBadRequestWhenUserMissing() throws Exception {
+        Product product = createProduct("Mouse", "29.99", 6);
+
+        mockMvc.perform(delete("/api/cart/items/{productId}", product.getId())
+                        .header("X-User-ID", "999999"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void removeFromCartReturnsBadRequestWhenUserHeaderMalformed() throws Exception {
+        Product product = createProduct("Dock", "129.99", 2);
+
+        mockMvc.perform(delete("/api/cart/items/{productId}", product.getId())
+                        .header("X-User-ID", "invalid-user-id"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getCartItemsReturnsItemsForUser() throws Exception {
+        User user = createUser("get-items@example.com");
+        Product product1 = createProduct("Monitor", "199.99", 3);
+        Product product2 = createProduct("Keyboard", "49.99", 5);
+
+        mockMvc.perform(post("/api/cart")
+                        .header("X-User-ID", user.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cartItemJson(product1.getId(), 1)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/cart")
+                        .header("X-User-ID", user.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cartItemJson(product2.getId(), 2)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/cart")
+                        .header("X-User-ID", user.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[*].productId", contains(product1.getId().intValue(), product2.getId().intValue())))
+                .andExpect(jsonPath("$[*].productName", contains("Monitor", "Keyboard")))
+                .andExpect(jsonPath("$[*].quantity", contains(1, 2)));
+    }
+
+    @Test
+    void getCartItemsReturnsEmptyForUserWithNoItems() throws Exception {
+        User user = createUser("empty-cart@example.com");
+
+        mockMvc.perform(get("/api/cart")
+                        .header("X-User-ID", user.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void getCartItemsReturnsEmptyForUnknownUser() throws Exception {
+        mockMvc.perform(get("/api/cart")
+                        .header("X-User-ID", "999999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getCartItemsReturnsBadRequestForMalformedUserHeader() throws Exception {
+        mockMvc.perform(get("/api/cart")
+                        .header("X-User-ID", "abc"))
+                .andExpect(status().isBadRequest());
     }
 
     private User createUser(String email) {

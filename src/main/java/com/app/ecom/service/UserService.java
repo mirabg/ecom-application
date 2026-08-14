@@ -7,11 +7,13 @@ import com.app.ecom.model.Address;
 import com.app.ecom.model.User;
 import com.app.ecom.repository.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
 
 @Service
+@Transactional(readOnly = true)
 public class UserService {
     private final UserRepository userRepository;
 
@@ -27,10 +29,12 @@ public class UserService {
         return userRepository.findById(id).map(this::mapToUserResponse);
     }
 
+    @Transactional
     public void createUser(UserRequest userRequest){
         userRepository.save(mapUserRequestToUser(userRequest));
     }
 
+    @Transactional
     public boolean updateUser(Long id, UserRequest userRequest){
         return userRepository.findById(id)
                 .map(existingUser -> {

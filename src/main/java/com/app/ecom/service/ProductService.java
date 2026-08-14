@@ -5,13 +5,14 @@ import com.app.ecom.dto.ProductResponse;
 import com.app.ecom.model.Product;
 import com.app.ecom.repository.ProductRepository;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class ProductService {
     private final ProductRepository productRepository;
 
@@ -19,6 +20,7 @@ public class ProductService {
         this.productRepository = productRepository;
     }
 
+    @Transactional
     public ProductResponse createProduct(ProductRequest productRequest) {
         Product product = mapProductRequestToProduct(productRequest);
         productRepository.save(product);
@@ -30,6 +32,7 @@ public class ProductService {
         return products.stream().map(this::mapProductToProductResponse).toList();
     }
 
+    @Transactional
     public ProductResponse updateProduct(Long id, ProductRequest productRequest) {
         return productRepository.findById(id)
                 .map(existingProduct -> updateProductFromRequest(existingProduct, productRequest))
@@ -73,6 +76,7 @@ public class ProductService {
         return productResponse;
     }
 
+    @Transactional
     public boolean deleteProduct(Long id) {
         return productRepository.findById(id)
                 .map(product -> {
