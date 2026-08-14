@@ -59,7 +59,7 @@ class OrderControllerTest {
 
         mockMvc.perform(post("/api/orders")
                         .header("X-User-ID", user.getId().toString()))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.totalAmount").value(1099.97))
@@ -82,7 +82,7 @@ class OrderControllerTest {
 
         mockMvc.perform(post("/api/orders")
                         .header("X-User-ID", user.getId().toString()))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
 
         assertEquals(0, cartItemRepository.count());
     }
@@ -96,7 +96,7 @@ class OrderControllerTest {
 
         mockMvc.perform(post("/api/orders")
                         .header("X-User-ID", user.getId().toString()))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.orderItems[0].productId").value(product.getId().intValue()))
                 .andExpect(jsonPath("$.orderItems[0].quantity").value(3))
                 .andExpect(jsonPath("$.orderItems[0].price").value(239.97));

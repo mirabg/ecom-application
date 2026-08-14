@@ -2,6 +2,7 @@ package com.app.ecom.controller;
 
 import com.app.ecom.dto.OrderResponse;
 import com.app.ecom.service.OrderService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +24,7 @@ public class OrderController {
             return ResponseEntity.badRequest().build();
         }
         return orderService.createOrder(id)
-                .map(ResponseEntity::ok)
+                .map(orderResponse -> new ResponseEntity<>(orderResponse, HttpStatus.CREATED))
                 .orElseGet(() -> ResponseEntity.badRequest().build());
     }
 }
