@@ -80,6 +80,16 @@ public class CartService {
         return true;
     }
 
+    public Optional<List<CartItem>> getCartItemEntitiesForUser(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> cartItemRepository.findByUserOrderByCreatedAtAscIdAsc(user));
+    }
+
+    @Transactional
+    public void clearCartForUser(User user) {
+        cartItemRepository.deleteByUser(user);
+    }
+
     public Optional<List<CartItemResponse>> getCartItems(Long userId) {
         Optional<User> userOpt = userRepository.findById(userId);
         if (userOpt.isEmpty()) {
