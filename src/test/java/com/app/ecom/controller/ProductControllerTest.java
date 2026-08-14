@@ -1,0 +1,162 @@
+package com.app.ecom.controller;
+
+import com.app.ecom.model.Product;
+import com.app.ecom.repository.ProductRepository;
+import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
+class ProductControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Test
+    void getAllProductsReturnsOkWhenEmpty() throws Exception {
+        mockMvc.perform(get("/api/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void getAllProductsReturnsCreatedProducts() throws Exception {
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Monitor", "4K monitor", "399.99", 15, "Displays", "https://cdn.example.com/monitor.png")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Desk Lamp", "LED desk lamp", "29.99", 60, "Lighting", "https://cdn.example.com/lamp.png")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void createProductReturnsCreatedAndPayload() throws Exception {
+        mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Wireless Mouse", "Ergonomic bluetooth mouse", "49.99", 120, "Accessories", "https://cdn.example.com/mouse.png")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.name").value("Wireless Mouse"))
+                .andExpect(jsonPath("$.description").value("Ergonomic bluetooth mouse"))
+                .andExpect(jsonPath("$.price").value(49.99))
+                .andExpect(jsonPath("$.stockQuantity").value(120))
+                .andExpect(jsonPath("$.category").value("Accessories"))
+                .andExpect(jsonPath("$.imageUrl").value("https://cdn.example.com/mouse.png"))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void createProductPersistsRecordInDatabase() throws Exception {
+        MvcResult createResult = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Laptop Stand", "Aluminum adjustable stand", "79.50", 45, "Office", "https://cdn.example.com/stand.png")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Number createdIdNumber = JsonPath.read(createResult.getResponse().getContentAsString(), "$.id");
+        assertNotNull(createdIdNumber);
+        Long createdId = createdIdNumber.longValue();
+
+        List<Product> products = productRepository.findAll();
+        assertFalse(products.isEmpty());
+
+        Product savedProduct = productRepository.findById(createdId)
+                .orElseThrow(() -> new IllegalStateException("Expected saved product not found"));
+
+        assertEquals("Laptop Stand", savedProduct.getName());
+        assertEquals("Aluminum adjustable stand", savedProduct.getDescription());
+        assertEquals(new BigDecimal("79.50"), savedProduct.getPrice());
+        assertEquals(45, savedProduct.getStockQuantity());
+        assertEquals("Office", savedProduct.getCategory());
+        assertEquals("https://cdn.example.com/stand.png", savedProduct.getImageUrl());
+        assertEquals(true, savedProduct.getActive());
+    }
+
+    @Test
+    void updateProductReturnsOkAndPersistsChanges() throws Exception {
+        MvcResult createResult = mockMvc.perform(post("/api/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Keyboard", "Mechanical keyboard", "99.99", 30, "Accessories", "https://cdn.example.com/kb.png")))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Number createdIdNumber = JsonPath.read(createResult.getResponse().getContentAsString(), "$.id");
+        Long createdId = createdIdNumber.longValue();
+
+        mockMvc.perform(put("/api/products/{id}", createdId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Keyboard Pro", "Premium mechanical keyboard", "149.99", 20, "Gaming", "https://cdn.example.com/kb-pro.png")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(createdId))
+                .andExpect(jsonPath("$.name").value("Keyboard Pro"))
+                .andExpect(jsonPath("$.description").value("Premium mechanical keyboard"))
+                .andExpect(jsonPath("$.price").value(149.99))
+                .andExpect(jsonPath("$.stockQuantity").value(20))
+                .andExpect(jsonPath("$.category").value("Gaming"))
+                .andExpect(jsonPath("$.imageUrl").value("https://cdn.example.com/kb-pro.png"))
+                .andExpect(jsonPath("$.active").value(true));
+
+        Product updatedProduct = productRepository.findById(createdId)
+                .orElseThrow(() -> new IllegalStateException("Expected updated product not found"));
+
+        assertEquals("Keyboard Pro", updatedProduct.getName());
+        assertEquals("Premium mechanical keyboard", updatedProduct.getDescription());
+        assertEquals(new BigDecimal("149.99"), updatedProduct.getPrice());
+        assertEquals(20, updatedProduct.getStockQuantity());
+        assertEquals("Gaming", updatedProduct.getCategory());
+        assertEquals("https://cdn.example.com/kb-pro.png", updatedProduct.getImageUrl());
+        assertEquals(true, updatedProduct.getActive());
+    }
+
+    @Test
+    void updateProductReturnsNotFoundWhenMissing() throws Exception {
+        mockMvc.perform(put("/api/products/{id}", 999999L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validProductJson("Any", "Any", "1.00", 1, "Any", "https://cdn.example.com/any.png")))
+                .andExpect(status().isNotFound());
+    }
+
+    private String validProductJson(String name, String description, String price, int stockQuantity, String category, String imageUrl) {
+        return "{" +
+                "\"name\":\"" + name + "\"," +
+                "\"description\":\"" + description + "\"," +
+                "\"price\":" + price + "," +
+                "\"stockQuantity\":" + stockQuantity + "," +
+                "\"category\":\"" + category + "\"," +
+                "\"imageUrl\":\"" + imageUrl + "\"" +
+                "}";
+    }
+}
+
